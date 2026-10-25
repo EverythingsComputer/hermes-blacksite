@@ -1,7 +1,7 @@
 ---
 name: incognito-blacksite
 description: Says 'blacksite' to enter incognito; 'burnsite' to end.
-version: 1.4.1
+version: 1.4.2
 author: EverythingsComputer (Hermes Agent)
 license: MIT
 platforms: [linux]
@@ -37,10 +37,19 @@ Triggers: user message contains the keyword **blacksite** (enter) or **burnsite*
 1. `python3 <skill>/scripts/incog.py burn <id> --dry` → shows the reverse plan; sanity-check paths (never reverse-delete anything the ledger didn't create; script already refuses outside-reach paths and pre-existing parents).
 2. `python3 <id> burn <id>` (actual): walks the ledger newest→oldest restoring backups / removing created files, `shred -u`s every file in the session dir, removes the dir. Reports reversed / skipped(needs-missing-backup) / unreverseable counts.
 3. Offer the user staged outputs for extraction BEFORE the shred? No — extraction happens at their request any time pre-burn; the burn script lists any files they said to keep (`incog.py keep <id> <path>` moves them to ~/.incognito/outbox/ untouched by the burn).
-4. Report `◼ BLACKSITE BURNED` + the residual list (things that cannot be undone) honestly:
-   - the conversation transcript itself (Hermes session history + Telegram server copy) — offer: if user consents, delete the session rows from the local Hermes session DB (ask first; Telegram copy out of reach).
+4. Report `◼ BLACKSITE BURNED` + the residual list (things that cannot be undone):
+   - the conversation transcript itself (Hermes session history + Telegram server copy) — offer the **transcript scrub** (next section) if the user wants the local record burned too.
    - GPU/driver caches, ~/.cache entries from tools run during the window (note sizes, don't chase).
    - any outbound effect (email sent, request POSTed) — inherently un-reversible; state it.
+
+## Procedure — transcript scrub (post-burn, opt-in, explicit consent first)
+A burn destroys artifacts, but the window's TEXT survives in the agent's own records: `~/.hermes/state.db` (`messages.content` + `messages.reasoning_content` + FTS indexes + one `delivery_obligations` row) and `~/.hermes/logs/*.log`. Mechanics that work:
+- Target patterns live ONLY in a dotfile under scratch; scripts print counts, never matches — a scrub command or output containing the patterns re-logs them (self-referential leak).
+- DB: `UPDATE ... SET col=replace(col,pat,'[scrubbed]') WHERE col LIKE` per column, commit, then `PRAGMA wal_checkpoint(TRUNCATE)`.
+- Logs: byte-replace IN PLACE (`open('r+b')`, seek 0, write, truncate, fsync) — same inode, safe against live appending writers.
+- NEVER `hermes sessions delete` to scrub (it nukes the whole session) and NEVER run `hermes sessions optimize`/VACUUM while the gateway is live (it refuses; overriding under a live writer produces the retired-`state.db-wal` broken-turn error).
+- Timing paradox: the scrub must come AFTER the last mention — the scrub conversation itself writes the patterns again. Launch a detached watchdog (`terminal(background=true, persist_on_release=true)`): loop scrub+byte-probe ~10s until ~6 consecutive clean rounds (user may reply more), then ONE best-effort `VACUUM` with 60-90s busy_timeout (free pages keep byte-recoverable copies until vacuumed; if it fails, note that residue self-clears as pages are reused or at next offline optimize), byte-probe `state.db`+`-wal` for final proof, re-scrub logs, write results (counts only) to a file, then `os.remove` the pattern file, scripts, and itself.
+- Out of reach, state plainly: messenger server copies (user deletes in-app) and provider-side API request logs.
 
 ## Pitfalls
 

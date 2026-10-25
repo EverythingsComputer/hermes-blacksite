@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.4.2 — 2026-10-25 (transcript scrub)
+- New optional post-burn procedure: scrub the window's TEXT from the agent's own records (session DB + logs) — replace-based row updates, WAL checkpoint, in-place log byte-scrubs, watchdog pattern for the "scrub must be last mention" paradox, live-VACUUM prohibition, and the self-referential-logging rule (patterns never in commands or script output). Derived from first real scrub under a live gateway.
+
 ## 1.4.1 — 2026-10-25 (live-use lesson)
 - Pitfall: logging `delete` for a session-created artifact made burn RESTORE it from its own backup — resurrecting a discarded file in a persistent dir. Rule: session-created files get `create`/`other`, never `delete`; plus mid-window ledger demotion procedure (patch BOTH LEDGER.jsonl and .bak, re-verify with `burn --dry`). Caught by the standing `burn --dry` discipline in real use.
 
