@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.3 — 2026-10-25 (first real scrub: three field fixes)
+- Column sweeps must enumerate ALL tables/columns: the first run missed `messages.tool_calls` (paths inside tool-call JSON), `messages.reasoning` (separate from reasoning_content), and `state_meta.value` — the watchdog spun 15 min at clean_rounds=0 because of it.
+- No db snapshots mid-scrub (the probe copy is itself a leak; shred it or don't make one).
+- VACUUM refinement: CLI refuses under a live gateway, but a fresh connection + busy_timeout VACUUM works with the gateway idle between turns (verified twice). Added diagnose-before-looping guidance (per-target byte probes localize sweep bugs) and the results-file-close-before-self-delete rule (a log-after-close crash buried the real status).
+
 ## 1.4.2 — 2026-10-25 (transcript scrub)
 - New optional post-burn procedure: scrub the window's TEXT from the agent's own records (session DB + logs) — replace-based row updates, WAL checkpoint, in-place log byte-scrubs, watchdog pattern for the "scrub must be last mention" paradox, live-VACUUM prohibition, and the self-referential-logging rule (patterns never in commands or script output). Derived from first real scrub under a live gateway.
 

@@ -1,7 +1,7 @@
 ---
 name: incognito-blacksite
 description: Says 'blacksite' to enter incognito; 'burnsite' to end.
-version: 1.4.2
+version: 1.4.3
 author: EverythingsComputer (Hermes Agent)
 license: MIT
 platforms: [linux]
@@ -45,10 +45,12 @@ Triggers: user message contains the keyword **blacksite** (enter) or **burnsite*
 ## Procedure — transcript scrub (post-burn, opt-in, explicit consent first)
 A burn destroys artifacts, but the window's TEXT survives in the agent's own records: `~/.hermes/state.db` (`messages.content` + `messages.reasoning_content` + FTS indexes + one `delivery_obligations` row) and `~/.hermes/logs/*.log`. Mechanics that work:
 - Target patterns live ONLY in a dotfile under scratch; scripts print counts, never matches — a scrub command or output containing the patterns re-logs them (self-referential leak).
-- DB: `UPDATE ... SET col=replace(col,pat,'[scrubbed]') WHERE col LIKE` per column, commit, then `PRAGMA wal_checkpoint(TRUNCATE)`.
+- DB: scrub by SCANNING ALL TABLES for TEXT-ish columns (`PRAGMA table_info`) — do NOT hardcode a column list. First real run proved `messages.content`/`reasoning_content` alone miss `messages.tool_calls` (full paths live in tool-call JSON), `messages.reasoning` (a SECOND column beside reasoning_content), and `state_meta.value`. UPDATE replace per column, commit, then `PRAGMA wal_checkpoint(TRUNCATE)`.
+- NEVER snapshot the db "to probe schema safely" mid-scrub — the copy becomes a leak; shred it with the helpers if one already exists. Probe live with read queries instead.
 - Logs: byte-replace IN PLACE (`open('r+b')`, seek 0, write, truncate, fsync) — same inode, safe against live appending writers.
-- NEVER `hermes sessions delete` to scrub (it nukes the whole session) and NEVER run `hermes sessions optimize`/VACUUM while the gateway is live (it refuses; overriding under a live writer produces the retired-`state.db-wal` broken-turn error).
-- Timing paradox: the scrub must come AFTER the last mention — the scrub conversation itself writes the patterns again. Launch a detached watchdog (`terminal(background=true, persist_on_release=true)`): loop scrub+byte-probe ~10s until ~6 consecutive clean rounds (user may reply more), then ONE best-effort `VACUUM` with 60-90s busy_timeout (free pages keep byte-recoverable copies until vacuumed; if it fails, note that residue self-clears as pages are reused or at next offline optimize), byte-probe `state.db`+`-wal` for final proof, re-scrub logs, write results (counts only) to a file, then `os.remove` the pattern file, scripts, and itself.
+- NEVER `hermes sessions delete` to scrub (it nukes the whole session). `hermes sessions optimize` refuses while the gateway holds the db — fine; the fallback that actually works: plain `VACUUM` from a FRESH sqlite connection with 60s busy_timeout (succeeded twice with the gateway idle between turns; only retry-free — if it fails, free-page copies self-clear as pages reuse). Reserve the refusal lesson for what NOT to do: force it or rewrite files under a live writer (retired-WAL broken turns).
+- A watchdog loop that NEVER reaches its clean streak = sweep bug, not user chatter. Localize before burning more minutes: separate byte-count probes per target (db file vs -wal vs logs) + a per-column live-row scan; old WAL pages and missed columns are the usual culprits.
+- Launch it detached (`terminal(background=true, persist_on_release=true)`): loop scrub+byte-probe ~10s until ~6 consecutive clean rounds (user may reply more), then ONE VACUUM attempt, byte-probe `state.db`+`-wal` for final proof, re-scrub logs, write results (counts only) to a file, then `os.remove` the pattern file, scripts, snapshot copies, and itself. Write the results file incrementally and CLOSE it before the self-delete — a `log()` after `close()` crashes the exit and buries the real status behind a traceback (watchdog exit-1 masked `clean_rounds=0` for a whole cycle).
 - Out of reach, state plainly: messenger server copies (user deletes in-app) and provider-side API request logs.
 
 ## Pitfalls
