@@ -8,7 +8,7 @@ A skill for [Hermes Agent](https://hermes-agent.nousresearch.com) (by Nous Resea
 
 ## Why this exists
 
-Agent memory is generous: persistent notes, learned skills, scheduled jobs, config edits. Useful — until a session is one you'd rather it *didn't* remember. Browser incognito only hides history; this skill **isolates, tracks, and reverses**.
+Agent memory is generous: persistent notes, learned skills, scheduled jobs, config edits. Useful — until a session is one you'd rather it *didn't* remember. Browser incognito only hides history; this skill **isolates, tracks, and reverses**. Easily to toggle with simple keywords.
 
 ## Quick start
 
@@ -49,7 +49,7 @@ Then read the script — it's ~200 lines of stdlib Python, no dependencies, and 
 | **keep** | Moves an artifact to an `outbox/` that survives the burn — on the *same medium* as the session |
 | **burn** | Dry-run preview → reverse ledger newest→oldest (restore backups, remove creations) → `shred -u` everything in the session dir → rmdir |
 
-## What it honestly can't do (the burn report always lists these)
+## Limitations & considerations (the burn report always lists these)
 
 - **The chat itself**: the conversation transcript lives in your agent's session history and on your messaging platform's servers. The skill offers local transcript deletion; the Telegram/Discord copy is beyond any skill's reach.
 - **Outbound effects**: a sent email or a POSTed request is un-undoable — stated at send time, repeated at burn.
@@ -58,10 +58,7 @@ Then read the script — it's ~200 lines of stdlib Python, no dependencies, and 
 
 ## Prior art & how this differs
 
-- [`incognito-mode`](https://skills.sh/genmetsuwenxuepress/hermes-skills/incognito-mode) (skills.sh) — layered privacy + log redaction + post-session audit. Erases its own traces.
-- [`burnthisshit`](https://clawhub) (ClawHub) — forensic shred of one session's transcript after the fact. One-way.
-
-Neither implements **pre-isolation + a reversible action ledger**: blacksite can put a *modified* file back the way it was (restore from automatic backup), not merely delete what it made — plus tmpfs mode with enforced verification, the keep/outbox handoff, and a residuals report that tells you exactly what it *couldn't* undo.
+Prior like skills do not implement **pre-isolation + a reversible action ledger**: blacksite can put a *modified* file back the way it was (restore from automatic backup), not merely delete what it made — plus tmpfs mode with enforced verification, the keep/outbox handoff, and a residuals report that tells you exactly what it *couldn't* undo.
 
 ## Self-test
 
