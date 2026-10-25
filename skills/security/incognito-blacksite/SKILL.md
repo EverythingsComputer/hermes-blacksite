@@ -1,7 +1,7 @@
 ---
 name: incognito-blacksite
 description: Says 'blacksite' to enter incognito; 'burnsite' to end.
-version: 1.4.0
+version: 1.4.1
 author: EverythingsComputer (Hermes Agent)
 license: MIT
 platforms: [linux]
@@ -50,6 +50,7 @@ Triggers: user message contains the keyword **blacksite** (enter) or **burnsite*
 - Do NOT shred/rm any path not created by the session or backed up by the ledger; the script enforces a rooted allowlist, keep using it instead of manual rm.
 - Ledger is inside the session dir (it burns with everything else) — that is intended; but it means a crash loses the map. For long ops, also mirror the ledger to a second file inside the dir (script does `LEDGER.jsonl` + `.bak`).
 - Work done via execute_code (not terminal) easily skips ledgering — acceptable for files staged INSIDE the session dir (burn shreds the whole dir regardless), but ANY outside-path mutation from any tool must still get a manual `incog.py log` line first.
+- NEVER `log delete` a file the session itself created (e.g. a ComfyUI/tool output copy you're discarding) — burn RESTORES delete-backups, resurrecting the artifact in a persistent dir. Use `log create <path>` (reverse = idempotent delete-if-exists) or `log other`. If the mistake happens mid-window, demote the action to `other` in LEDGER.jsonl AND LEDGER.jsonl.bak (the merger dedupes by ts+action+target, so an un-patched mirror resurrects the entry), then re-check `burn --dry` before the real burn — the dry-run is what surfaces this.
 - 'blacksite' while already active: reply 'already blacksite, id <x>' — don't nest.
 - 'burnsite' with no active session: say so; don't glob ~/
 - Memory/skill writes you 'forget' to make are the #1 leak — before finalizing any blacksite reply, re-check: did anything call memory/skill_manage/cron/git? If yes, undo it and log the undo.
