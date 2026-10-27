@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.7.0 — 2026-10-26 (scrub is default on every burn)
+- `burn` now stages the transcript cleanse automatically: the closed window's
+  Hermes session id is read from `HERMES_SESSION_ID` (env, never argv) and the
+  scrub plan is staged in the same breath as the shred. `--no-scrub` is the
+  explicit opt-out; `--session <sid>` overrides the env id.
+- Redaction marker simplified to `[REDACTED]`; the FTS residue probe now
+  excludes already-redacted rows — the old marker contained the word
+  "blacksite", so case-insensitive MATCH hit the marker itself and the
+  verify loop could never converge.
+- Scrub DB opens carry `timeout=60000`/`busy_timeout` so a running Hermes
+  writer queues instead of raising "database is locked".
+- `selftest_scrub.py` covers default staging via env id and `--no-scrub`.
+
+## 1.6.0 — 2026-10-26 (transcript scrub is a tool now)
+- New `scripts/scrub.py` + `incog.py burn --scrub --session <sid> [--pattern p]` and
+  `incog.py scrub <id>`: the whole transcript-scrub procedure — range marker pass,
+  cross-session token pass, in-place log masking, watchdog-to-clean-streak, single
+  VACUUM, counts-only report, plan self-shred — is deterministic code, not per-run
+  agent craftsmanship. Patterns live only in the 0600 plan file, never in argv or output.
+- Two schema truths found building it: the real FTS triggers are high-water-GATED
+  (updates to old rows skip reindexing — stale terms stay MATCH-able unless you
+  `rebuild`), and structural id columns must be EXCLUDED from token replacement or
+  the watchdog probes its own columns forever.
+- `scripts/selftest_scrub.py`: sandbox-fixture E2E (fake schema w/ external-content
+  FTS + triggers); wired into selftest.sh as assertion #40. Real state.db never touched.
+
+## 1.5.0 — 2026-10-26 (destruction presumption)
+- New hard rule, stated first: everything in the window is presumed to burn or be undone — task phrasing like "save it / put it on my Desktop / keep a copy" is staging, not extraction. Only the user's explicit keep-words license `incog.py keep`; ambiguity means asking BEFORE a keep, and a wrong keep is undone immediately (move back, it burns).
+- Burnstep 3 rewritten to match: extraction is never agent-initiated; outbox files are handed off AFTER the burn.
+- Pitfall added from first live violation of exactly this rule (anticipatory `keep` on a "save to Desktop" request, reverted same window).
+
 ## 1.4.3 — 2026-10-25 (first real scrub: three field fixes)
 - Column sweeps must enumerate ALL tables/columns: the first run missed `messages.tool_calls` (paths inside tool-call JSON), `messages.reasoning` (separate from reasoning_content), and `state_meta.value` — the watchdog spun 15 min at clean_rounds=0 because of it.
 - No db snapshots mid-scrub (the probe copy is itself a leak; shred it or don't make one).

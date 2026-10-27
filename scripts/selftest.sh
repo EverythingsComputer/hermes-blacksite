@@ -100,5 +100,12 @@ fi
 # cleanup of test roots we own
 rmdir ~/.incognito 2>/dev/null; rmdir "/run/user/$(id -u)/incognito/outbox" "/run/user/$(id -u)/incognito" 2>/dev/null
 
+echo "== transcript scrubber (fixture sandbox; real ~/.hermes untouched)"
+if python3 "$HERE/scripts/selftest_scrub.py" >/dev/null 2>&1; then
+  ok "scrub fixture: full lifecycle (plan stage, range+token passes, logs, FTS, vacuum, plan shred)"
+else
+  bad "scrub fixture FAILED — run: python3 $HERE/scripts/selftest_scrub.py"
+fi
+
 echo; echo "RESULT: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

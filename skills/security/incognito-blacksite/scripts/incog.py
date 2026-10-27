@@ -10,7 +10,13 @@
   incog.py log <id> <other> <path>   -> record misc action (clone/download/etc), no backup
   incog.py keep <id> <path>          -> move file to outbox/ so the burn spares it
   incog.py list                      -> active session ids (those without BURNED marker)
-  incog.py burn <id> [--dry]         -> reverse ledger newest->oldest, shred session dir
+  incog.py burn <id> [--dry] [--no-scrub] [--session <hermes-sid>] [--pattern <p>]...
+                                      -> reverse ledger newest->oldest, shred session dir;
+                                         transcript scrub is DEFAULT on every burn (plan
+                                         staged in ~/.incognito/, run `scrub <id>` after);
+                                         --no-scrub skips it; session id from
+                                         HERMES_SESSION_ID env or --session
+  incog.py scrub <id> [--interval N] -> exec scripts/scrub.py with the staged plan
 """
 import sys, os, json, time, shutil, subprocess, hashlib
 
@@ -286,10 +292,35 @@ def reverse(row, dry):
                 except OSError as e: print(f"  FAILED undelete {t}: {e}")
     # other actions: informational only
 
+def plan_path(base, bsid):
+    return os.path.join(base, ".scrub-" + hashlib.sha256(bsid.encode()).hexdigest()[:12] + ".json")
+
 def cmd_burn(args):
     sid = args[0]; dry = "--dry" in args[1:]
+    scrub = "--no-scrub" not in args[1:]   # default ON: every burn cleans the transcript
+    hermes_sid = None; patterns = []
+    rest = args[1:]
+    for i, x in enumerate(rest):
+        if x == "--session" and i + 1 < len(rest): hermes_sid = rest[i + 1]
+        if x == "--pattern" and i + 1 < len(rest): patterns.append(rest[i + 1])
+    if scrub and not hermes_sid:
+        hermes_sid = os.environ.get("HERMES_SESSION_ID")  # argv gets logged; env doesn't
     d = sdir(sid)
+    if scrub and not dry and not hermes_sid:
+        print("warning: no session id (env HERMES_SESSION_ID or --session) — transcript scrub skipped")
+        scrub = False
     rows = read_ledger(d)
+    t0 = rows[0]["ts"] if rows else time.time()
+    if scrub and not dry:
+        # plan lives OUTSIDE the session dir (it must survive the shred) but holds the
+        # target strings, so scrub.py shreds it when done. Patterns go in it, never in argv.
+        p = plan_path(os.path.dirname(d), sid)
+        with open(p, "w") as fh:
+            json.dump({"bsid": sid, "session_id": hermes_sid, "t0": t0, "t1": time.time() + 600,
+                       "patterns": patterns, "db": os.path.expanduser("~/.hermes/state.db"),
+                       "logs": os.path.expanduser("~/.hermes/logs"),
+                       "marker": "[REDACTED]"}, fh)
+        os.chmod(p, 0o600)
     n_rev = n_skip = 0
     for row in reversed(rows):
         if row["action"] in ("create", "modify", "delete", "create_over_existing"):
@@ -308,11 +339,24 @@ def cmd_burn(args):
         shutil.rmtree(d, ignore_errors=True)
     if not dry and os.path.exists(d):
         die("session dir survived burn — inspect manually")
+    if scrub and not dry:
+        print(f"transcript scrub plan staged — run:  python3 {os.path.abspath(__file__)} scrub {sid}")
+
+def cmd_scrub(args):
+    sid = args[0]
+    for base in (ROOT, ram_root()):
+        p = plan_path(base, sid)
+        if os.path.exists(p):
+            exe = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scrub.py")
+            os.execv(sys.executable, [sys.executable, exe, "--plan", p] + args[1:])
+        # plan for ram sessions lives next to the session dir
+    die(f"no scrub plan for {sid} (burn --scrub first; plans live in ~/.incognito/)")
 
 def main():
     if len(sys.argv) < 2: die(__doc__ or "usage")
     cmd, args = sys.argv[1], sys.argv[2:]
-    {"open": cmd_open, "log": cmd_log, "keep": cmd_keep, "list": cmd_list, "burn": cmd_burn}.get(cmd, lambda a: die("unknown cmd " + cmd))(args)
+    {"open": cmd_open, "log": cmd_log, "keep": cmd_keep, "list": cmd_list, "burn": cmd_burn,
+     "scrub": cmd_scrub}.get(cmd, lambda a: die("unknown cmd " + cmd))(args)
 
 if __name__ == "__main__":
     main()
